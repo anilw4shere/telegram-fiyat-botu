@@ -16,7 +16,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Bot aktif ve calisiyor!")
+        self.wfile.write(b"Bot aktif and calisiyor!")
 
 def run_web_server():
     port = int(os.environ.get("PORT", 10000))
@@ -180,7 +180,7 @@ def main():
     threading.Thread(target=run_web_server, daemon=True).start()
     threading.Thread(target=background_price_checker, daemon=True).start()
     
-    print("Menü butonlu Fiyat Avcısı aktif...")
+    print("Tertemiz sohbet mimarili Fiyat Avcısı aktif...")
     offset = None
     while True:
         updates = get_updates(offset)
@@ -197,7 +197,7 @@ def main():
                     
                     msg_lower = user_message.lower()
                     if msg_lower == "/start" or msg_lower == "merhaba":
-                        send_menu_message(chat_id, "👋 *Hoş geldin!* \n\nE-ticaret ürünlerini takip etmek için link gönderebilirsin. İşlemlerini aşağıdaki menüden yönetebilirsin.")
+                        send_menu_message(chat_id, "👋 *Hoş geldin!* \n\nE-ticaret linki gönderdiğinde anında sessizce kaydedilir. Tüm ürünlerini görmek için alttaki **Takip Ettiklerim** menüsünü kullanabilirsin.")
                     elif user_message == "📦 Takip Ettiklerim" or msg_lower == "/takipteyim":
                         user_list = data[chat_id]
                         if not user_list:
@@ -212,14 +212,16 @@ def main():
                         save_data(data)
                         send_menu_message(chat_id, "🗑️ Takip listen tamamen temizlendi.")
                     elif user_message.startswith("http://") or user_message.startswith("https://"):
+                        # 1. Kullanıcının attığı uzun link mesajını anında tamamen siliyoruz
                         delete_message(chat_id, message_id)
                         
+                        # 2. Ürünü arkada tarayıp kaydediyoruz
                         title, price, image_url = get_product_info(user_message)
                         if title:
                             data[chat_id].append({"url": user_message, "title": title, "price": price, "image": image_url})
                             save_data(data)
-                            reply = f"✅ *Ürün Başarıyla Eklendi!*\n\n📌 *{title}*\n💰 *Fiyat:* {price}"
-                            send_photo_with_button(chat_id, reply, image_url, user_message)
+                            # 3. Ortalığı kirletmeden sadece kısa ve şık bir onay mesajı veriyoruz
+                            send_menu_message(chat_id, f"✅ *Ürün başarıyla listeye eklendi!*\n📌 _{title}_\n💰 {price}")
                         else:
                             send_menu_message(chat_id, f"❌ Ürün eklenemedi: {price}")
                     else:
