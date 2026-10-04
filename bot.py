@@ -8,11 +8,10 @@ import requests
 from bs4 import BeautifulSoup
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-TOKEN = "8249717250:AAG4FRUnhglSLP9FsvNfsxrryMOk42xCtLg"  # Token'ını buraya yaz
+TOKEN = "8249717250:AAG4FRUnhglSLP9FsvNfsxrryMOk42xCtLg"  # Kendi Token'ını buraya yaz
 URL = f"https://api.telegram.org/bot{TOKEN}/"
 DATA_FILE = "takip_edilenler.json"
 
-# Render'ın "Web Service" olarak ayakta tutması için gereken mini sunucu
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -83,18 +82,30 @@ def send_message(chat_id, text):
 
 def background_price_checker():
     while True:
-        time.sleep(7200)
+        # 30 dakikada bir kontrol (30 * 60 = 1800 saniye)
+        time.sleep(1800) 
         data = load_data()
         for chat_id, items in data.items():
             updated = False
             for item in items:
                 old_price = item['price']
                 _, new_price = get_product_info(item['url'])
+                
                 if new_price and new_price != "Fiyat okunamadı" and new_price != old_price:
+                    # Fiyat değişim yönünü belirleyelim (basitçe karakter uzunluğu veya metin kıyaslaması yerine bilgilendirici başlık)
                     item['price'] = new_price
                     updated = True
-                    send_message(chat_id, f"🔔 **Fiyat Güncellendi!**\n\n📌 {item['title']}\n💰 Eski: {old_price}\n💰 Yeni: {new_price}")
-            if updated: save_data(data)
+                    
+                    message = (
+                        f"🔔 **Fiyat Değişikliği Alarmı!**\n\n"
+                        f"📌 {item['title']}\n"
+                        f"🔗 {item['url']}\n\n"
+                        f"💰 **Eski Fiyat:** {old_price}\n"
+                        f"🏷️ **Yeni Fiyat:** {new_price}"
+                    )
+                    send_message(chat_id, message)
+            if updated: 
+                save_data(data)
 
 def get_updates(offset=None):
     url = URL + "getUpdates?timeout=100"
@@ -106,12 +117,10 @@ def get_updates(offset=None):
         return None
 
 def main():
-    # Mini web sunucusunu arka planda başlat (Render'ın çökmemesi için)
     threading.Thread(target=run_web_server, daemon=True).start()
-    # Fiyat kontrolcüsünü başlat
     threading.Thread(target=background_price_checker, daemon=True).start()
     
-    print("Web Servis ve Fiyat Avcısı aktif...")
+    print("30 dakikalık kontrol döngüsüyle Fiyat Avcısı aktif...")
     offset = None
     while True:
         updates = get_updates(offset)
@@ -127,7 +136,7 @@ def main():
                     
                     msg_lower = user_message.lower()
                     if msg_lower == "/start":
-                        reply = "Merhaba! Fiyat takip botu bulutta aktif."
+                        reply = "Merhaba! 30 dakikada bir fiyatları tarayan ve değişimleri bildiren bot aktif."
                     elif msg_lower == "/takipteyim":
                         user_list = data[chat_id]
                         reply = "📦 Takip Ettiğin Ürünler:\n\n" + "\n".join([f"{i+1}. {item['title']}\n🔗 {item['url']}\n💰 {item['price']}\n" for i, item in enumerate(user_list)]) if user_list else "Takip ettiğin ürün yok."
@@ -141,7 +150,7 @@ def main():
                         if title:
                             data[chat_id].append({"url": user_message, "title": title, "price": price})
                             save_data(data)
-                            reply = f"✅ Eklendi!\n\n📌 {title}\n💰 {price}"
+                            reply = f"✅ Eklendi ve Alarm Kuruldu!\n\n📌 {title}\n💰 {price}"
                         else:
                             reply = f"❌ Eklenemedi: {price}"
                     else:
