@@ -193,7 +193,7 @@ def main():
     threading.Thread(target=run_web_server, daemon=True).start()
     threading.Thread(target=background_price_checker, daemon=True).start()
     
-    print("Ana menü butonlu Fiyat Avcısı aktif...")
+    print("Karsilama mesajli Fiyat Avcisi aktif...")
     offset = None
     while True:
         updates = get_updates(offset)
@@ -230,10 +230,10 @@ def main():
                     msg_lower = user_message.lower()
                     if msg_lower == "/start" or msg_lower == "merhaba":
                         delete_message(chat_id, message_id)
-                        send_silent_menu(chat_id, "Eklemek istediğiniz ürünün linkini gönderiniz.")
+                        send_silent_menu(chat_id, "Hoşgeldiniz. Eklemek istediğiniz ürünün linkini gönderiniz.")
                     elif user_message == "🏠 Ana Menü" or msg_lower == "/anamenu":
                         delete_message(chat_id, message_id)
-                        send_silent_menu(chat_id, "Eklemek istediğiniz ürünün linkini gönderiniz.")
+                        send_silent_menu(chat_id, "Hoşgeldiniz. Eklemek istediğiniz ürünün linkini gönderiniz.")
                     elif user_message == "📦 Takip Ettiklerim" or msg_lower == "/takipteyim":
                         delete_message(chat_id, message_id)
                         user_list = data[chat_id]
