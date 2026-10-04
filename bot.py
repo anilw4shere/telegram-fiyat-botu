@@ -40,7 +40,6 @@ def save_data(data):
     try:
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
-        print("Veriler basariyla takip_edilenler.json dosyasina kaydedildi!")
     except Exception as e:
         print(f"Kaydetme hatasi: {e}")
 
@@ -124,7 +123,8 @@ def send_silent_menu(chat_id, text):
             "parse_mode": "Markdown",
             "reply_markup": json.dumps({
                 "keyboard": [
-                    [{"text": "📦 Takip Ettiklerim"}, {"text": "🧹 Listeyi Temizle"}]
+                    [{"text": "📦 Takip Ettiklerim"}],
+                    [{"text": "🏠 Ana Menü"}, {"text": "🧹 Listeyi Temizle"}]
                 ],
                 "resize_keyboard": True,
                 "is_persistent": True
@@ -193,7 +193,7 @@ def main():
     threading.Thread(target=run_web_server, daemon=True).start()
     threading.Thread(target=background_price_checker, daemon=True).start()
     
-    print("JSON kayıt kontrollü Fiyat Avcısı aktif...")
+    print("Ana menü butonlu Fiyat Avcısı aktif...")
     offset = None
     while True:
         updates = get_updates(offset)
@@ -230,7 +230,10 @@ def main():
                     msg_lower = user_message.lower()
                     if msg_lower == "/start" or msg_lower == "merhaba":
                         delete_message(chat_id, message_id)
-                        send_silent_menu(chat_id, "Bot aktif.")
+                        send_silent_menu(chat_id, "Eklemek istediğiniz ürünün linkini gönderiniz.")
+                    elif user_message == "🏠 Ana Menü" or msg_lower == "/anamenu":
+                        delete_message(chat_id, message_id)
+                        send_silent_menu(chat_id, "Eklemek istediğiniz ürünün linkini gönderiniz.")
                     elif user_message == "📦 Takip Ettiklerim" or msg_lower == "/takipteyim":
                         delete_message(chat_id, message_id)
                         user_list = data[chat_id]
