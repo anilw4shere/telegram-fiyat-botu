@@ -10,11 +10,12 @@ TOKEN = "8249717250:AAG4FRUnhglSLP9FsvNfsxrryMOk42xCtLg"  # Kendi Token'ını bu
 URL = f"https://api.telegram.org/bot{TOKEN}/"
 DATA_FILE = "takip_edilenler.json"
 
+# Render'ın port isteğini karşılayan basit web sunucusu sınıfı
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Bot aktif!")
+        self.wfile.write(b"PriceTrackerBot aktif ve calisiyor!")
     def log_message(self, format, *args):
         return
 
@@ -166,88 +167,85 @@ def background_price_checker():
             if updated: 
                 save_data(data)
 
-def main():
-    # KRİTİK: Takılı kalan eski webhook bağlantısını temizle
+def start_bot_polling():
     try:
         requests.get(f"{URL}deleteWebhook", timeout=5)
-        print("Eski webhooklar temizlendi.")
     except:
         pass
 
-    threading.Thread(target=run_web_server, daemon=True).start()
-    threading.Thread(target=background_price_checker, daemon=True).start()
-    
-    print("Bot aktif ve dinlemede...")
     offset = None
+    print("Telegram bot polling baslatildi...")
     
     while True:
         try:
-            params = {"timeout": 30}
+            params = {"timeout": 20}
             if offset:
                 params["offset"] = offset
                 
-            response = requests.get(f"{URL}getUpdates", params=params, timeout=35)
-            res_json = response.json()
-            
-            if res_json.get("ok") and "result" in res_json:
-                for update in res_json["result"]:
-                    offset = update["update_id"] + 1
-                    
-                    if "callback_query" in update:
-                        query = update["callback_query"]
-                        callback_data = query["data"]
-                        chat_id = str(query["message"]["chat"]["id"])
-                        message_id = query["message"]["message_id"]
+            response = requests.get(f"{URL}getUpdates", params=params, timeout=25)
+            if response.status_code == 200:
+                res_json = response.json()
+                if res_json.get("ok") and "result" in res_json:
+                    for update in res_json["result"]:
+                        offset = update["update_id"] + 1
                         
-                        if callback_data.startswith("del_"):
-                            try:
-                                idx = int(callback_data.split("_")[1])
-                                data = load_data()
-                                if chat_id in data and 0 <= idx < len(data[chat_id]):
-                                    removed_item = data[chat_id].pop(idx)
-                                    save_data(data)
-                                    delete_message(chat_id, message_id)
-                                    requests.post(f"{URL}answerCallbackQuery", json={"callback_query_id": query["id"], "text": f"'{removed_item['title'][:15]}...' silindi!"})
-                            except:
-                                pass
+                        if "callback_query" in update:
+                            query = update["callback_query"]
+                            callback_data = query["data"]
+                            chat_id = str(query["message"]["chat"]["id"])
+                            message_id = query["message"]["message_id"]
+                            
+                            if callback_data.startswith("del_"):
+                                try:
+                                    idx = int(callback_data.split("_")[1])
+                                    data = load_data()
+                                    if chat_id in data and 0 <= idx < len(data[chat_id]):
+                                        removed_item = data[chat_id].pop(idx)
+                                        save_data(data)
+                                        delete_message(chat_id, message_id)
+                                        requests.post(f"{URL}answerCallbackQuery", json={"callback_query_id": query["id"], "text": f"'{removed_item['title'][:15]}...' silindi!"})
+                                except:
+                                    pass
 
-                    elif "message" in update and "text" in update["message"]:
-                        chat_id = str(update["message"]["chat"]["id"])
-                        message_id = update["message"]["message_id"]
-                        user_message = update["message"]["text"].strip()
-                        
-                        data = load_data()
-                        if chat_id not in data: data[chat_id] = []
-                        
-                        msg_lower = user_message.lower()
-                        if msg_lower == "/start" or msg_lower == "merhaba" or user_message == "🏠 Ana Menü" or msg_lower == "/anamenu":
-                            show_main_menu(chat_id, "Hoşgeldiniz. Eklemek istediğiniz ürünün linkini gönderiniz.")
-                        elif user_message == "📦 Takip Ettiklerim" or msg_lower == "/takipteyim":
-                            user_list = data[chat_id]
-                            if not user_list:
-                                show_main_menu(chat_id, "📭 Takip ettiğin ürün bulunmuyor.")
-                            else:
-                                show_main_menu(chat_id, f"📦 *Takip Ettiğin Ürünler ({len(user_list)} adet):*")
-                                for i, item in enumerate(user_list):
-                                    text = f"*{i+1}. Ürün*\n📌 *{item['title']}*\n💰 *Fiyat:* {item['price']}"
-                                    send_photo_card(chat_id, text, item.get('image'), item['url'], i)
-                        elif user_message == "🧹 Listeyi Temizle" or msg_lower == "/temizle":
-                            data[chat_id] = []
-                            save_data(data)
-                            show_main_menu(chat_id, "🗑️ Tüm liste temizlendi.")
-                        elif user_message.startswith("http://") or user_message.startswith("https://"):
-                            delete_message(chat_id, message_id)
-                            title, price, image_url = get_product_info(user_message)
-                            if title:
-                                data[chat_id].append({"url": user_message, "title": title, "price": price, "image": image_url})
+                        elif "message" in update and "text" in update["message"]:
+                            chat_id = str(update["message"]["chat"]["id"])
+                            message_id = update["message"]["message_id"]
+                            user_message = update["message"]["text"].strip()
+                            
+                            data = load_data()
+                            if chat_id not in data: data[chat_id] = []
+                            
+                            msg_lower = user_message.lower()
+                            if msg_lower == "/start" or msg_lower == "merhaba" or user_message == "🏠 Ana Menü" or msg_lower == "/anamenu":
+                                show_main_menu(chat_id, "Hoşgeldiniz. Eklemek istediğiniz ürünün linkini gönderiniz.")
+                            elif user_message == "📦 Takip Ettiklerim" or msg_lower == "/takipteyim":
+                                user_list = data[chat_id]
+                                if not user_list:
+                                    show_main_menu(chat_id, "📭 Takip ettiğin ürün bulunmuyor.")
+                                else:
+                                    show_main_menu(chat_id, f"📦 *Takip Ettiğin Ürünler ({len(user_list)} adet):*")
+                                    for i, item in enumerate(user_list):
+                                        text = f"*{i+1}. Ürün*\n📌 *{item['title']}*\n💰 *Fiyat:* {item['price']}"
+                                        send_photo_card(chat_id, text, item.get('image'), item['url'], i)
+                            elif user_message == "🧹 Listeyi Temizle" or msg_lower == "/temizle":
+                                data[chat_id] = []
                                 save_data(data)
-                                show_main_menu(chat_id, f"✅ *Eklendi:* _{title[:30]}_ ({price})")
-                            else:
-                                show_main_menu(chat_id, f"❌ Eklenemedi: {price}")
+                                show_main_menu(chat_id, "🗑️️ Tüm liste temizlendi.")
+                            elif user_message.startswith("http://") or user_message.startswith("https://"):
+                                delete_message(chat_id, message_id)
+                                title, price, image_url = get_product_info(user_message)
+                                if title:
+                                    data[chat_id].append({"url": user_message, "title": title, "price": price, "image": image_url})
+                                    save_data(data)
+                                    show_main_menu(chat_id, f"✅ *Eklendi:* _{title[:30]}_ ({price})")
+                                else:
+                                    show_main_menu(chat_id, f"❌ Eklenemedi: {price}")
         except Exception as e:
-            time.sleep(3)
+            time.sleep(2)
             
         time.sleep(0.5)
 
 if __name__ == '__main__':
-    main()
+    # Web sunucusunu ana thread'de, bot döngüsünü yan thread'de başlatıyoruz (Render Web Service uyumlu)
+    threading.Thread(target=start_bot_polling, daemon=True).start()
+    run_web_server()
