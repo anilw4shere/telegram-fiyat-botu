@@ -83,7 +83,7 @@ def send_message(chat_id, text):
 def background_price_checker():
     while True:
         # 30 dakikada bir kontrol (30 * 60 = 1800 saniye)
-        time.sleep(1800) 
+        time.sleep(10) 
         data = load_data()
         for chat_id, items in data.items():
             updated = False
@@ -157,7 +157,7 @@ def main():
                         reply = "Lütfen geçerli bir link gönderin."
                     
                     send_message(chat_id, reply)
-        time.sleep(1)
+        time.sleep(1800)
 
 if __name__ == '__main__':
     main()
