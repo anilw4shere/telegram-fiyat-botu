@@ -16,7 +16,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Bot aktif and calisiyor!")
+        self.wfile.write(b"Bot aktif ve calisiyor!")
 
 def run_web_server():
     port = int(os.environ.get("PORT", 10000))
@@ -84,14 +84,19 @@ def get_product_info(url):
     except Exception as e:
         return None, f"Hata: {str(e)}", None
 
-def send_photo_with_button(chat_id, caption, photo_url, product_url):
+def send_product_card(chat_id, caption, photo_url, product_url, item_index):
     try:
         payload = {
             "chat_id": chat_id,
             "caption": caption,
             "parse_mode": "Markdown",
             "reply_markup": json.dumps({
-                "inline_keyboard": [[{"text": "🔗 Ürüne Git", "url": product_url}]]
+                "inline_keyboard": [
+                    [
+                        {"text": "🔗 Ürüne Git", "url": product_url},
+                        {"text": "❌ Bu Ürünü Sil", "callback_data": f"del_{item_index}"}
+                    ]
+                ]
             })
         }
         if photo_url:
@@ -103,7 +108,8 @@ def send_photo_with_button(chat_id, caption, photo_url, product_url):
     except:
         pass
 
-def send_menu_message(chat_id, text):
+def send_silent_menu(chat_id, text):
+    """Sadece alttaki klavye menüsünü açık tutarak kısa bilgi verir."""
     try:
         payload = {
             "chat_id": chat_id,
@@ -163,7 +169,7 @@ def background_price_checker():
                         f"💰 **Eski Fiyat:** {old_price}\n"
                         f"🏷️ **Yeni Fiyat:** {new_price}"
                     )
-                    send_photo_with_button(chat_id, message, item.get('image'), item['url'])
+                    send_product_card(chat_id, message, item.get('image'), item['url'], 0)
             if updated: 
                 save_data(data)
 
@@ -180,14 +186,33 @@ def main():
     threading.Thread(target=run_web_server, daemon=True).start()
     threading.Thread(target=background_price_checker, daemon=True).start()
     
-    print("Tertemiz sohbet mimarili Fiyat Avcısı aktif...")
+    print("Minimalist ve temiz ekranlı Fiyat Avcısı aktif...")
     offset = None
     while True:
         updates = get_updates(offset)
         if updates and "result" in updates:
             for update in updates["result"]:
                 offset = update["update_id"] + 1
-                if "message" in update and "text" in update["message"]:
+                
+                if "callback_query" in update:
+                    query = update["callback_query"]
+                    callback_data = query["data"]
+                    chat_id = str(query["message"]["chat"]["id"])
+                    message_id = query["message"]["message_id"]
+                    
+                    if callback_data.startswith("del_"):
+                        try:
+                            idx = int(callback_data.split("_")[1])
+                            data = load_data()
+                            if chat_id in data and 0 <= idx < len(data[chat_id]):
+                                removed_item = data[chat_id].pop(idx)
+                                save_data(data)
+                                delete_message(chat_id, message_id)
+                                requests.post(f"{URL}answerCallbackQuery", json={"callback_query_id": query["id"], "text": f"'{removed_item['title'][:20]}...' listeden çıkarıldı!"})
+                        except Exception as e:
+                            print(f"Silme hatası: {e}")
+
+                elif "message" in update and "text" in update["message"]:
                     chat_id = str(update["message"]["chat"]["id"])
                     message_id = update["message"]["message_id"]
                     user_message = update["message"]["text"].strip()
@@ -197,35 +222,36 @@ def main():
                     
                     msg_lower = user_message.lower()
                     if msg_lower == "/start" or msg_lower == "merhaba":
-                        send_menu_message(chat_id, "👋 *Hoş geldin!* \n\nE-ticaret linki gönderdiğinde anında sessizce kaydedilir. Tüm ürünlerini görmek için alttaki **Takip Ettiklerim** menüsünü kullanabilirsin.")
+                        # /start dendiğinde sadece alttaki menüyü açar, ekrana uzun yazı yazmaz
+                        delete_message(chat_id, message_id)
+                        send_silent_menu(chat_id, "✨")
                     elif user_message == "📦 Takip Ettiklerim" or msg_lower == "/takipteyim":
+                        delete_message(chat_id, message_id)
                         user_list = data[chat_id]
                         if not user_list:
-                            send_menu_message(chat_id, "📭 Takip ettiğin ürün bulunmuyor.")
+                            send_silent_menu(chat_id, "📭 Takip ettiğin ürün bulunmuyor.")
                         else:
-                            send_menu_message(chat_id, "📦 *Takip Ettiğin Güncel Ürünler:*")
+                            send_silent_menu(chat_id, f"📦 *Takip Ettiğin Ürünler ({len(user_list)} adet):*")
                             for i, item in enumerate(user_list):
                                 text = f"*{i+1}. Ürün*\n📌 *{item['title']}*\n💰 *Fiyat:* {item['price']}"
-                                send_photo_with_button(chat_id, text, item.get('image'), item['url'])
+                                send_product_card(chat_id, text, item.get('image'), item['url'], i)
                     elif user_message == "🧹 Listeyi Temizle" or msg_lower == "/temizle":
+                        delete_message(chat_id, message_id)
                         data[chat_id] = []
                         save_data(data)
-                        send_menu_message(chat_id, "🗑️ Takip listen tamamen temizlendi.")
+                        send_silent_menu(chat_id, "🗑️ Tüm liste temizlendi.")
                     elif user_message.startswith("http://") or user_message.startswith("https://"):
-                        # 1. Kullanıcının attığı uzun link mesajını anında tamamen siliyoruz
                         delete_message(chat_id, message_id)
                         
-                        # 2. Ürünü arkada tarayıp kaydediyoruz
                         title, price, image_url = get_product_info(user_message)
                         if title:
                             data[chat_id].append({"url": user_message, "title": title, "price": price, "image": image_url})
                             save_data(data)
-                            # 3. Ortalığı kirletmeden sadece kısa ve şık bir onay mesajı veriyoruz
-                            send_menu_message(chat_id, f"✅ *Ürün başarıyla listeye eklendi!*\n📌 _{title}_\n💰 {price}")
+                            send_silent_menu(chat_id, f"✅ *Eklendi:* _{title[:30]}_ ({price})")
                         else:
-                            send_menu_message(chat_id, f"❌ Ürün eklenemedi: {price}")
+                            send_silent_menu(chat_id, f"❌ Eklenemedi: {price}")
                     else:
-                        send_menu_message(chat_id, "Lütfen geçerli bir e-ticaret linki gönderin veya menüden seçim yapın.")
+                        delete_message(chat_id, message_id)
         time.sleep(1)
 
 if __name__ == '__main__':
