@@ -109,7 +109,6 @@ def send_product_card(chat_id, caption, photo_url, product_url, item_index):
         pass
 
 def send_silent_menu(chat_id, text):
-    """Sadece kısa onay veya liste mesajı gönderir, boş durumlarda mesaj atmaz."""
     try:
         payload = {
             "chat_id": chat_id,
@@ -186,7 +185,7 @@ def main():
     threading.Thread(target=run_web_server, daemon=True).start()
     threading.Thread(target=background_price_checker, daemon=True).start()
     
-    print("Saf minimalist Fiyat Avcısı aktif...")
+    print("Düzeltilmiş Fiyat Avcısı aktif...")
     offset = None
     while True:
         updates = get_updates(offset)
@@ -222,8 +221,9 @@ def main():
                     
                     msg_lower = user_message.lower()
                     if msg_lower == "/start" or msg_lower == "merhaba":
-                        # /start dendiğinde hiçbir şey yazmaz, sadece kullanıcının mesajını siler ve menüyü sabit tutar
                         delete_message(chat_id, message_id)
+                        # /start dendiğinde Telegram'ın düğmeyi kaldırması için menüyü tetikliyoruz
+                        send_silent_menu(chat_id, "Bot aktif.")
                     elif user_message == "📦 Takip Ettiklerim" or msg_lower == "/takipteyim":
                         delete_message(chat_id, message_id)
                         user_list = data[chat_id]
@@ -238,7 +238,7 @@ def main():
                         delete_message(chat_id, message_id)
                         data[chat_id] = []
                         save_data(data)
-                        send_silent_menu(chat_id, "🗑️️ Tüm liste temizlendi.")
+                        send_silent_menu(chat_id, "🗑️ Tüm liste temizlendi.")
                     elif user_message.startswith("http://") or user_message.startswith("https://"):
                         delete_message(chat_id, message_id)
                         
