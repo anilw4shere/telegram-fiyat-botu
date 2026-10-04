@@ -44,10 +44,16 @@ def get_product_info(url):
     try:
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code != 200:
-            return None, "Siteye erişilemedi."
+            return None, "Siteye erişilemedi.", None
         
         soup = BeautifulSoup(response.text, 'html.parser')
         title = soup.title.string.strip() if soup.title else "Ürün Adı Bulunamadı"
+        
+        # Görsel yakalama (Universal og:image meta etiketi)
+        image_url = None
+        og_image = soup.find("meta", property="og:image")
+        if og_image and og_image.get("content"):
+            image_url = og_image["content"]
         
         price_text = None
         if "ikea.com.tr" in url:
@@ -69,41 +75,80 @@ def get_product_info(url):
                     break
         
         if not price_text: price_text = "Fiyat okunamadı"
-        return title[:50], price_text
+        return title[:50], price_text, image_url
     except Exception as e:
-        return None, f"Hata: {str(e)}"
+        return None, f"Hata: {str(e)}", None
 
-def send_message(chat_id, text):
+def send_photo_with_button(chat_id, caption, photo_url, product_url):
     try:
-        text_encoded = urllib.parse.quote(text)
-        urllib.request.urlopen(f"{URL}sendMessage?chat_id={chat_id}&text={text_encoded}")
+        payload = {
+            "chat_id": chat_id,
+            "caption": caption,
+            "parse_mode": "Markdown",
+            "reply_markup": json.dumps({
+                "inline_keyboard": [[{"text": "🔗 Ürüne Git", "url": product_url}]]
+            })
+        }
+        if photo_url:
+            payload["photo"] = photo_url
+            requests.post(f"{URL}sendPhoto", json=payload, timeout=10)
+        else:
+            # Görsel bulunamazsa normal mesaj olarak butonla gönder
+            payload["text"] = caption
+            requests.post(f"{URL}sendMessage", json=payload, timeout=10)
     except:
         pass
 
+def send_message(chat_id, text):
+    try:
+        payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
+        requests.post(f"{URL}sendMessage", json=payload, timeout=10)
+    except:
+        pass
+
+def parse_price_value(price_str):
+    try:
+        cleaned = ''.join(c for c in price_str if c.isdigit() or c in ',.')
+        cleaned = cleaned.replace('.', '').replace(',', '.')
+        return float(cleaned)
+    except:
+        return 0.0
+
 def background_price_checker():
     while True:
-        # 30 dakikada bir kontrol (30 * 60 = 1800 saniye)
-        time.sleep(1800) 
+        time.sleep(1800)  # 30 dakika
         data = load_data()
         for chat_id, items in data.items():
             updated = False
             for item in items:
                 old_price = item['price']
-                _, new_price = get_product_info(item['url'])
+                _, new_price, image_url = get_product_info(item['url'])
                 
+                if image_url:
+                    item['image'] = image_url
+
                 if new_price and new_price != "Fiyat okunamadı" and new_price != old_price:
-                    # Fiyat değişim yönünü belirleyelim (basitçe karakter uzunluğu veya metin kıyaslaması yerine bilgilendirici başlık)
+                    old_val = parse_price_value(old_price)
+                    new_val = parse_price_value(new_price)
+                    
+                    if old_val > 0 and new_val > 0:
+                        if new_val < old_val:
+                            status_icon = "📉 **Fiyat Düştü!**"
+                        else:
+                            status_icon = "📈 **Fiyat Arttı!**"
+                    else:
+                        status_icon = "🔔 **Fiyat Değişti!**"
+
                     item['price'] = new_price
                     updated = True
                     
                     message = (
-                        f"🔔 **Fiyat Değişikliği Alarmı!**\n\n"
-                        f"📌 {item['title']}\n"
-                        f"🔗 {item['url']}\n\n"
+                        f"{status_icon}\n\n"
+                        f"📌 *{item['title']}*\n\n"
                         f"💰 **Eski Fiyat:** {old_price}\n"
                         f"🏷️ **Yeni Fiyat:** {new_price}"
                     )
-                    send_message(chat_id, message)
+                    send_photo_with_button(chat_id, message, item.get('image'), item['url'])
             if updated: 
                 save_data(data)
 
@@ -120,7 +165,7 @@ def main():
     threading.Thread(target=run_web_server, daemon=True).start()
     threading.Thread(target=background_price_checker, daemon=True).start()
     
-    print("30 dakikalık kontrol döngüsüyle Fiyat Avcısı aktif...")
+    print("Görsel ve Buton destekli Fiyat Avcısı aktif...")
     offset = None
     while True:
         updates = get_updates(offset)
@@ -136,28 +181,33 @@ def main():
                     
                     msg_lower = user_message.lower()
                     if msg_lower == "/start":
-                        reply = "Merhaba! 30 dakikada bir fiyatları tarayan ve değişimleri bildiren bot aktif."
+                        reply = "Merhaba! Görsel ve buton destekli fiyat takip botun aktif."
+                        send_message(chat_id, reply)
                     elif msg_lower == "/takipteyim":
                         user_list = data[chat_id]
-                        reply = "📦 Takip Ettiğin Ürünler:\n\n" + "\n".join([f"{i+1}. {item['title']}\n🔗 {item['url']}\n💰 {item['price']}\n" for i, item in enumerate(user_list)]) if user_list else "Takip ettiğin ürün yok."
+                        if not user_list:
+                            send_message(chat_id, "Takip ettiğin ürün yok.")
+                        else:
+                            for i, item in enumerate(user_list):
+                                text = f"📦 *Ürün {i+1}*\n📌 *{item['title']}*\n💰 *Fiyat:* {item['price']}"
+                                send_photo_with_button(chat_id, text, item.get('image'), item['url'])
                     elif msg_lower == "/temizle":
                         data[chat_id] = []
                         save_data(data)
-                        reply = "Liste temizlendi."
+                        send_message(chat_id, "Liste temizlendi.")
                     elif user_message.startswith("http://") or user_message.startswith("https://"):
-                        send_message(chat_id, "Ürün taranıyor...")
-                        title, price = get_product_info(user_message)
+                        send_message(chat_id, "Ürün taranıyor ve görsel yükleniyor...")
+                        title, price, image_url = get_product_info(user_message)
                         if title:
-                            data[chat_id].append({"url": user_message, "title": title, "price": price})
+                            data[chat_id].append({"url": user_message, "title": title, "price": price, "image": image_url})
                             save_data(data)
-                            reply = f"✅ Eklendi ve Alarm Kuruldu!\n\n📌 {title}\n💰 {price}"
+                            reply = f"✅ *Ürün Başarıyla Eklendi!*\n\n📌 *{title}*\n💰 *Fiyat:* {price}"
+                            send_photo_with_button(chat_id, reply, image_url, user_message)
                         else:
-                            reply = f"❌ Eklenemedi: {price}"
+                            send_message(chat_id, f"❌ Eklenemedi: {price}")
                     else:
-                        reply = "Lütfen geçerli bir link gönderin."
-                    
-                    send_message(chat_id, reply)
-        time.sleep(1800)
+                        send_message(chat_id, "Lütfen geçerli bir e-ticaret linki gönderin.")
+        time.sleep(1)
 
 if __name__ == '__main__':
     main()
