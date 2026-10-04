@@ -6,10 +6,23 @@ import os
 import threading
 import requests
 from bs4 import BeautifulSoup
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
-TOKEN = "8249717250:AAG4FRUnhglSLP9FsvNfsxrryMOk42xCtLg"  # Kendi token'ını buraya yaz
+TOKEN = "8249717250:AAG4FRUnhglSLP9FsvNfsxrryMOk42xCtLg"  # Token'ını buraya yaz
 URL = f"https://api.telegram.org/bot{TOKEN}/"
 DATA_FILE = "takip_edilenler.json"
+
+# Render'ın "Web Service" olarak ayakta tutması için gereken mini sunucu
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot aktif ve calisiyor!")
+
+def run_web_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(('0.0.0.0', port), SimpleHandler)
+    server.serve_forever()
 
 def load_data():
     if os.path.exists(DATA_FILE):
@@ -65,8 +78,8 @@ def send_message(chat_id, text):
     try:
         text_encoded = urllib.parse.quote(text)
         urllib.request.urlopen(f"{URL}sendMessage?chat_id={chat_id}&text={text_encoded}")
-    except Exception as e:
-        print(f"Mesaj gönderme hatası: {e}")
+    except:
+        pass
 
 def background_price_checker():
     while True:
@@ -89,13 +102,16 @@ def get_updates(offset=None):
     try:
         response = urllib.request.urlopen(url)
         return json.loads(response.read().decode('utf-8'))
-    except Exception as e:
-        print(f"Bağlantı/Token Hatası: {e}")  # Artık hatayı ekranda göreceğiz!
+    except:
         return None
 
 def main():
+    # Mini web sunucusunu arka planda başlat (Render'ın çökmemesi için)
+    threading.Thread(target=run_web_server, daemon=True).start()
+    # Fiyat kontrolcüsünü başlat
     threading.Thread(target=background_price_checker, daemon=True).start()
-    print("Bot çalışıyor, mesajlar bekleniyor...")
+    
+    print("Web Servis ve Fiyat Avcısı aktif...")
     offset = None
     while True:
         updates = get_updates(offset)
@@ -111,7 +127,7 @@ def main():
                     
                     msg_lower = user_message.lower()
                     if msg_lower == "/start":
-                        reply = "Merhaba! Fiyat takip botu aktif. Ürün linki gönderebilirsin."
+                        reply = "Merhaba! Fiyat takip botu bulutta aktif."
                     elif msg_lower == "/takipteyim":
                         user_list = data[chat_id]
                         reply = "📦 Takip Ettiğin Ürünler:\n\n" + "\n".join([f"{i+1}. {item['title']}\n🔗 {item['url']}\n💰 {item['price']}\n" for i, item in enumerate(user_list)]) if user_list else "Takip ettiğin ürün yok."
