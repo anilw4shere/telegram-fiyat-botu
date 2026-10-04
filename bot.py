@@ -10,7 +10,6 @@ TOKEN = "8249717250:AAG4FRUnhglSLP9FsvNfsxrryMOk42xCtLg"  # Kendi Token'ını bu
 URL = f"https://api.telegram.org/bot{TOKEN}/"
 DATA_FILE = "takip_edilenler.json"
 
-# Render'ın 7/24 ayakta tutması için mini web sunucusu
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -168,10 +167,17 @@ def background_price_checker():
                 save_data(data)
 
 def main():
+    # KRİTİK: Takılı kalan eski webhook bağlantısını temizle
+    try:
+        requests.get(f"{URL}deleteWebhook", timeout=5)
+        print("Eski webhooklar temizlendi.")
+    except:
+        pass
+
     threading.Thread(target=run_web_server, daemon=True).start()
     threading.Thread(target=background_price_checker, daemon=True).start()
     
-    print("Bot stabil modda baslatildi...")
+    print("Bot aktif ve dinlemede...")
     offset = None
     
     while True:
