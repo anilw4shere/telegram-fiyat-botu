@@ -27,14 +27,22 @@ def load_data():
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
+                content = f.read().strip()
+                if not content:
+                    return {}
+                return json.loads(content)
+        except Exception as e:
+            print(f"Veri okuma hatasi: {e}")
             return {}
     return {}
 
 def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
+    try:
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+        print("Veriler basariyla takip_edilenler.json dosyasina kaydedildi!")
+    except Exception as e:
+        print(f"Kaydetme hatasi: {e}")
 
 def delete_message(chat_id, message_id):
     try:
@@ -136,7 +144,7 @@ def parse_price_value(price_str):
 
 def background_price_checker():
     while True:
-        time.sleep(1800)  # 30 dakika
+        time.sleep(1800)
         data = load_data()
         for chat_id, items in data.items():
             updated = False
@@ -185,7 +193,7 @@ def main():
     threading.Thread(target=run_web_server, daemon=True).start()
     threading.Thread(target=background_price_checker, daemon=True).start()
     
-    print("Düzeltilmiş Fiyat Avcısı aktif...")
+    print("JSON kayıt kontrollü Fiyat Avcısı aktif...")
     offset = None
     while True:
         updates = get_updates(offset)
@@ -209,7 +217,7 @@ def main():
                                 delete_message(chat_id, message_id)
                                 requests.post(f"{URL}answerCallbackQuery", json={"callback_query_id": query["id"], "text": f"'{removed_item['title'][:20]}...' listeden çıkarıldı!"})
                         except Exception as e:
-                            print(f"Silme hatası: {e}")
+                            print(f"Silme hatasi: {e}")
 
                 elif "message" in update and "text" in update["message"]:
                     chat_id = str(update["message"]["chat"]["id"])
@@ -222,7 +230,6 @@ def main():
                     msg_lower = user_message.lower()
                     if msg_lower == "/start" or msg_lower == "merhaba":
                         delete_message(chat_id, message_id)
-                        # /start dendiğinde Telegram'ın düğmeyi kaldırması için menüyü tetikliyoruz
                         send_silent_menu(chat_id, "Bot aktif.")
                     elif user_message == "📦 Takip Ettiklerim" or msg_lower == "/takipteyim":
                         delete_message(chat_id, message_id)
