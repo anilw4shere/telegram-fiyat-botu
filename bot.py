@@ -1,6 +1,4 @@
 import json
-import urllib.request
-import urllib.parse
 import time
 import os
 import threading
@@ -12,14 +10,14 @@ TOKEN = "8249717250:AAG4FRUnhglSLP9FsvNfsxrryMOk42xCtLg"  # Kendi Token'ını bu
 URL = f"https://api.telegram.org/bot{TOKEN}/"
 DATA_FILE = "takip_edilenler.json"
 
-# Render'ın uyandırma istekleri için hafif web sunucusu
+# Render'ın 7/24 ayakta tutması için mini web sunucusu
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"Bot aktif!")
     def log_message(self, format, *args):
-        return  # Log kirliliğini önlemek için logları susturuyoruz
+        return
 
 def run_web_server():
     port = int(os.environ.get("PORT", 10000))
@@ -45,9 +43,47 @@ def save_data(data):
     except:
         pass
 
+def send_message(chat_id, text, reply_markup=None):
+    try:
+        payload = {
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "Markdown"
+        }
+        if reply_markup:
+            payload["reply_markup"] = json.dumps(reply_markup)
+        requests.post(f"{URL}sendMessage", json=payload, timeout=10)
+    except:
+        pass
+
+def send_photo_card(chat_id, caption, photo_url, product_url, item_index):
+    try:
+        reply_markup = {
+            "inline_keyboard": [
+                [
+                    {"text": "🔗 Ürüne Git", "url": product_url},
+                    {"text": "❌ Bu Ürünü Sil", "callback_data": f"del_{item_index}"}
+                ]
+            ]
+        }
+        payload = {
+            "chat_id": chat_id,
+            "caption": caption,
+            "parse_mode": "Markdown",
+            "reply_markup": json.dumps(reply_markup)
+        }
+        if photo_url:
+            payload["photo"] = photo_url
+            requests.post(f"{URL}sendPhoto", json=payload, timeout=10)
+        else:
+            payload["text"] = caption
+            requests.post(f"{URL}sendMessage", json=payload, timeout=10)
+    except:
+        pass
+
 def delete_message(chat_id, message_id):
     try:
-        requests.post(f"{URL}deleteMessage", json={"chat_id": chat_id, "message_id": message_id}, timeout=3)
+        requests.post(f"{URL}deleteMessage", json={"chat_id": chat_id, "message_id": message_id}, timeout=5)
     except:
         pass
 
@@ -93,48 +129,16 @@ def get_product_info(url):
     except Exception as e:
         return None, f"Hata: {str(e)}", None
 
-def send_product_card(chat_id, caption, photo_url, product_url, item_index):
-    try:
-        payload = {
-            "chat_id": chat_id,
-            "caption": caption,
-            "parse_mode": "Markdown",
-            "reply_markup": json.dumps({
-                "inline_keyboard": [
-                    [
-                        {"text": "🔗 Ürüne Git", "url": product_url},
-                        {"text": "❌ Bu Ürünü Sil", "callback_data": f"del_{item_index}"}
-                    ]
-                ]
-            })
-        }
-        if photo_url:
-            payload["photo"] = photo_url
-            requests.post(f"{URL}sendPhoto", json=payload, timeout=10)
-        else:
-            payload["text"] = caption
-            requests.post(f"{URL}sendMessage", json=payload, timeout=10)
-    except:
-        pass
-
-def send_silent_menu(chat_id, text):
-    try:
-        payload = {
-            "chat_id": chat_id,
-            "text": text,
-            "parse_mode": "Markdown",
-            "reply_markup": json.dumps({
-                "keyboard": [
-                    [{"text": "📦 Takip Ettiklerim"}],
-                    [{"text": "🏠 Ana Menü"}, {"text": "🧹 Listeyi Temizle"}]
-                ],
-                "resize_keyboard": True,
-                "is_persistent": True
-            })
-        }
-        requests.post(f"{URL}sendMessage", json=payload, timeout=10)
-    except:
-        pass
+def show_main_menu(chat_id, text):
+    keyboard = {
+        "keyboard": [
+            [{"text": "📦 Takip Ettiklerim"}],
+            [{"text": "🏠 Ana Menü"}, {"text": "🧹 Listeyi Temizle"}]
+        ],
+        "resize_keyboard": True,
+        "is_persistent": True
+    }
+    send_message(chat_id, text, reply_markup=keyboard)
 
 def background_price_checker():
     while True:
@@ -145,16 +149,11 @@ def background_price_checker():
             for item in items:
                 old_price = item['price']
                 _, new_price, image_url = get_product_info(item['url'])
-                
                 if image_url:
                     item['image'] = image_url
 
                 if new_price and new_price != "Fiyat okunamadı" and new_price != old_price:
-                    if new_price < old_price:
-                        status_icon = "📉 **Fiyat Düştü!**"
-                    else:
-                        status_icon = "📈 **Fiyat Arttı!**"
-
+                    status_icon = "📉 **Fiyat Düştü!**" if new_price < old_price else "📈 **Fiyat Arttı!**"
                     item['price'] = new_price
                     updated = True
                     
@@ -164,28 +163,28 @@ def background_price_checker():
                         f"💰 **Eski Fiyat:** {old_price}\n"
                         f"🏷️ **Yeni Fiyat:** {new_price}"
                     )
-                    send_product_card(chat_id, message, item.get('image'), item['url'], 0)
+                    send_photo_card(chat_id, message, item.get('image'), item['url'], 0)
             if updated: 
                 save_data(data)
 
 def main():
-    # Web sunucusunu arka planda başlat
     threading.Thread(target=run_web_server, daemon=True).start()
     threading.Thread(target=background_price_checker, daemon=True).start()
     
-    print("Bot basariyla baslatildi ve dinlemede...")
-    
+    print("Bot stabil modda baslatildi...")
     offset = None
+    
     while True:
         try:
-            url = URL + "getUpdates?timeout=30"
-            if offset: url += f"&offset={offset}"
+            params = {"timeout": 30}
+            if offset:
+                params["offset"] = offset
+                
+            response = requests.get(f"{URL}getUpdates", params=params, timeout=35)
+            res_json = response.json()
             
-            response = urllib.request.urlopen(url, timeout=35)
-            updates = json.loads(response.read().decode('utf-8'))
-            
-            if updates and "result" in updates:
-                for update in updates["result"]:
+            if res_json.get("ok") and "result" in res_json:
+                for update in res_json["result"]:
                     offset = update["update_id"] + 1
                     
                     if "callback_query" in update:
@@ -215,36 +214,32 @@ def main():
                         if chat_id not in data: data[chat_id] = []
                         
                         msg_lower = user_message.lower()
-                        if msg_lower == "/start" or msg_lower == "merhaba":
-                            send_silent_menu(chat_id, "Hoşgeldiniz. Eklemek istediğiniz ürünün linkini gönderiniz.")
-                        elif user_message == "🏠 Ana Menü" or msg_lower == "/anamenu":
-                            send_silent_menu(chat_id, "Hoşgeldiniz. Eklemek istediğiniz ürünün linkini gönderiniz.")
+                        if msg_lower == "/start" or msg_lower == "merhaba" or user_message == "🏠 Ana Menü" or msg_lower == "/anamenu":
+                            show_main_menu(chat_id, "Hoşgeldiniz. Eklemek istediğiniz ürünün linkini gönderiniz.")
                         elif user_message == "📦 Takip Ettiklerim" or msg_lower == "/takipteyim":
                             user_list = data[chat_id]
                             if not user_list:
-                                send_silent_menu(chat_id, "📭 Takip ettiğin ürün bulunmuyor.")
+                                show_main_menu(chat_id, "📭 Takip ettiğin ürün bulunmuyor.")
                             else:
-                                send_silent_menu(chat_id, f"📦 *Takip Ettiğin Ürünler ({len(user_list)} adet):*")
+                                show_main_menu(chat_id, f"📦 *Takip Ettiğin Ürünler ({len(user_list)} adet):*")
                                 for i, item in enumerate(user_list):
                                     text = f"*{i+1}. Ürün*\n📌 *{item['title']}*\n💰 *Fiyat:* {item['price']}"
-                                    send_product_card(chat_id, text, item.get('image'), item['url'], i)
+                                    send_photo_card(chat_id, text, item.get('image'), item['url'], i)
                         elif user_message == "🧹 Listeyi Temizle" or msg_lower == "/temizle":
                             data[chat_id] = []
                             save_data(data)
-                            send_silent_menu(chat_id, "🗑 Tüm liste temizlendi.")
+                            show_main_menu(chat_id, "🗑️ Tüm liste temizlendi.")
                         elif user_message.startswith("http://") or user_message.startswith("https://"):
                             delete_message(chat_id, message_id)
-                            
                             title, price, image_url = get_product_info(user_message)
                             if title:
                                 data[chat_id].append({"url": user_message, "title": title, "price": price, "image": image_url})
                                 save_data(data)
-                                send_silent_menu(chat_id, f"✅ *Eklendi:* _{title[:30]}_ ({price})")
+                                show_main_menu(chat_id, f"✅ *Eklendi:* _{title[:30]}_ ({price})")
                             else:
-                                send_silent_menu(chat_id, f"❌ Eklenemedi: {price}")
+                                show_main_menu(chat_id, f"❌ Eklenemedi: {price}")
         except Exception as e:
-            # Bağlantı kopmalarında botun çökmesini önler
-            time.sleep(2)
+            time.sleep(3)
             
         time.sleep(0.5)
 
