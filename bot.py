@@ -103,9 +103,20 @@ def send_photo_with_button(chat_id, caption, photo_url, product_url):
     except:
         pass
 
-def send_message(chat_id, text):
+def send_menu_message(chat_id, text):
     try:
-        payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
+        payload = {
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "Markdown",
+            "reply_markup": json.dumps({
+                "keyboard": [
+                    [{"text": "📦 Takip Ettiklerim"}, {"text": "🧹 Listeyi Temizle"}]
+                ],
+                "resize_keyboard": True,
+                "is_persistent": True
+            })
+        }
         requests.post(f"{URL}sendMessage", json=payload, timeout=10)
     except:
         pass
@@ -169,7 +180,7 @@ def main():
     threading.Thread(target=run_web_server, daemon=True).start()
     threading.Thread(target=background_price_checker, daemon=True).start()
     
-    print("Link silme özellikli Fiyat Avcısı aktif...")
+    print("Menü butonlu Fiyat Avcısı aktif...")
     offset = None
     while True:
         updates = get_updates(offset)
@@ -185,34 +196,34 @@ def main():
                     if chat_id not in data: data[chat_id] = []
                     
                     msg_lower = user_message.lower()
-                    if msg_lower == "/start":
-                        send_message(chat_id, "Merhaba! Link silme özellikli fiyat takip botun aktif.")
-                    elif msg_lower == "/takipteyim":
+                    if msg_lower == "/start" or msg_lower == "merhaba":
+                        send_menu_message(chat_id, "👋 *Hoş geldin!* \n\nE-ticaret ürünlerini takip etmek için link gönderebilirsin. İşlemlerini aşağıdaki menüden yönetebilirsin.")
+                    elif user_message == "📦 Takip Ettiklerim" or msg_lower == "/takipteyim":
                         user_list = data[chat_id]
                         if not user_list:
-                            send_message(chat_id, "Takip ettiğin ürün yok.")
+                            send_menu_message(chat_id, "📭 Takip ettiğin ürün bulunmuyor.")
                         else:
+                            send_menu_message(chat_id, "📦 *Takip Ettiğin Güncel Ürünler:*")
                             for i, item in enumerate(user_list):
-                                text = f"📦 *Ürün {i+1}*\n📌 *{item['title']}*\n💰 *Fiyat:* {item['price']}"
+                                text = f"*{i+1}. Ürün*\n📌 *{item['title']}*\n💰 *Fiyat:* {item['price']}"
                                 send_photo_with_button(chat_id, text, item.get('image'), item['url'])
-                    elif msg_lower == "/temizle":
+                    elif user_message == "🧹 Listeyi Temizle" or msg_lower == "/temizle":
                         data[chat_id] = []
                         save_data(data)
-                        send_message(chat_id, "Liste temizlendi.")
+                        send_menu_message(chat_id, "🗑️ Takip listen tamamen temizlendi.")
                     elif user_message.startswith("http://") or user_message.startswith("https://"):
-                        # Kullanıcının gönderdiği uzun link mesajını anında siliyoruz
                         delete_message(chat_id, message_id)
                         
                         title, price, image_url = get_product_info(user_message)
                         if title:
                             data[chat_id].append({"url": user_message, "title": title, "price": price, "image": image_url})
                             save_data(data)
-                            reply = f"✅ *Ürün Eklendi!*\n\n📌 *{title}*\n💰 *Fiyat:* {price}"
+                            reply = f"✅ *Ürün Başarıyla Eklendi!*\n\n📌 *{title}*\n💰 *Fiyat:* {price}"
                             send_photo_with_button(chat_id, reply, image_url, user_message)
                         else:
-                            send_message(chat_id, f"❌ Eklenemedi: {price}")
+                            send_menu_message(chat_id, f"❌ Ürün eklenemedi: {price}")
                     else:
-                        send_message(chat_id, "Lütfen geçerli bir e-ticaret linki gönderin.")
+                        send_menu_message(chat_id, "Lütfen geçerli bir e-ticaret linki gönderin veya menüden seçim yapın.")
         time.sleep(1)
 
 if __name__ == '__main__':
