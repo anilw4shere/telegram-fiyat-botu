@@ -36,6 +36,12 @@ def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
+def delete_message(chat_id, message_id):
+    try:
+        requests.post(f"{URL}deleteMessage", json={"chat_id": chat_id, "message_id": message_id}, timeout=5)
+    except:
+        pass
+
 def get_product_info(url):
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -49,7 +55,6 @@ def get_product_info(url):
         soup = BeautifulSoup(response.text, 'html.parser')
         title = soup.title.string.strip() if soup.title else "Ürün Adı Bulunamadı"
         
-        # Görsel yakalama (Universal og:image meta etiketi)
         image_url = None
         og_image = soup.find("meta", property="og:image")
         if og_image and og_image.get("content"):
@@ -93,7 +98,6 @@ def send_photo_with_button(chat_id, caption, photo_url, product_url):
             payload["photo"] = photo_url
             requests.post(f"{URL}sendPhoto", json=payload, timeout=10)
         else:
-            # Görsel bulunamazsa normal mesaj olarak butonla gönder
             payload["text"] = caption
             requests.post(f"{URL}sendMessage", json=payload, timeout=10)
     except:
@@ -165,7 +169,7 @@ def main():
     threading.Thread(target=run_web_server, daemon=True).start()
     threading.Thread(target=background_price_checker, daemon=True).start()
     
-    print("Görsel ve Buton destekli Fiyat Avcısı aktif...")
+    print("Link silme özellikli Fiyat Avcısı aktif...")
     offset = None
     while True:
         updates = get_updates(offset)
@@ -174,6 +178,7 @@ def main():
                 offset = update["update_id"] + 1
                 if "message" in update and "text" in update["message"]:
                     chat_id = str(update["message"]["chat"]["id"])
+                    message_id = update["message"]["message_id"]
                     user_message = update["message"]["text"].strip()
                     
                     data = load_data()
@@ -181,8 +186,7 @@ def main():
                     
                     msg_lower = user_message.lower()
                     if msg_lower == "/start":
-                        reply = "Merhaba! Görsel ve buton destekli fiyat takip botun aktif."
-                        send_message(chat_id, reply)
+                        send_message(chat_id, "Merhaba! Link silme özellikli fiyat takip botun aktif.")
                     elif msg_lower == "/takipteyim":
                         user_list = data[chat_id]
                         if not user_list:
@@ -196,12 +200,14 @@ def main():
                         save_data(data)
                         send_message(chat_id, "Liste temizlendi.")
                     elif user_message.startswith("http://") or user_message.startswith("https://"):
-                        send_message(chat_id, "Ürün taranıyor ve görsel yükleniyor...")
+                        # Kullanıcının gönderdiği uzun link mesajını anında siliyoruz
+                        delete_message(chat_id, message_id)
+                        
                         title, price, image_url = get_product_info(user_message)
                         if title:
                             data[chat_id].append({"url": user_message, "title": title, "price": price, "image": image_url})
                             save_data(data)
-                            reply = f"✅ *Ürün Başarıyla Eklendi!*\n\n📌 *{title}*\n💰 *Fiyat:* {price}"
+                            reply = f"✅ *Ürün Eklendi!*\n\n📌 *{title}*\n💰 *Fiyat:* {price}"
                             send_photo_with_button(chat_id, reply, image_url, user_message)
                         else:
                             send_message(chat_id, f"❌ Eklenemedi: {price}")
