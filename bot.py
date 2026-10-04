@@ -130,17 +130,10 @@ def send_silent_menu(chat_id, text):
                 "is_persistent": True
             })
         }
-        requests.post(f"{URL}sendMessage", json=payload, timeout=10)
+        res = requests.post(f"{URL}sendMessage", json=payload, timeout=10)
+        return res.status_code == 200
     except:
-        pass
-
-def parse_price_value(price_str):
-    try:
-        cleaned = ''.join(c for c in price_str if c.isdigit() or c in ',.')
-        cleaned = cleaned.replace('.', '').replace(',', '.')
-        return float(cleaned)
-    except:
-        return 0.0
+        return False
 
 def background_price_checker():
     while True:
@@ -156,16 +149,10 @@ def background_price_checker():
                     item['image'] = image_url
 
                 if new_price and new_price != "Fiyat okunamadı" and new_price != old_price:
-                    old_val = parse_price_value(old_price)
-                    new_val = parse_price_value(new_price)
-                    
-                    if old_val > 0 and new_val > 0:
-                        if new_val < old_val:
-                            status_icon = "📉 **Fiyat Düştü!**"
-                        else:
-                            status_icon = "📈 **Fiyat Arttı!**"
+                    if new_price < old_price:
+                        status_icon = "📉 **Fiyat Düştü!**"
                     else:
-                        status_icon = "🔔 **Fiyat Değişti!**"
+                        status_icon = "📈 **Fiyat Arttı!**"
 
                     item['price'] = new_price
                     updated = True
@@ -193,7 +180,7 @@ def main():
     threading.Thread(target=run_web_server, daemon=True).start()
     threading.Thread(target=background_price_checker, daemon=True).start()
     
-    print("Karsilama mesajli Fiyat Avcisi aktif...")
+    print("Kararlı Fiyat Avcısı aktif...")
     offset = None
     while True:
         updates = get_updates(offset)
@@ -229,13 +216,10 @@ def main():
                     
                     msg_lower = user_message.lower()
                     if msg_lower == "/start" or msg_lower == "merhaba":
-                        delete_message(chat_id, message_id)
                         send_silent_menu(chat_id, "Hoşgeldiniz. Eklemek istediğiniz ürünün linkini gönderiniz.")
                     elif user_message == "🏠 Ana Menü" or msg_lower == "/anamenu":
-                        delete_message(chat_id, message_id)
                         send_silent_menu(chat_id, "Hoşgeldiniz. Eklemek istediğiniz ürünün linkini gönderiniz.")
                     elif user_message == "📦 Takip Ettiklerim" or msg_lower == "/takipteyim":
-                        delete_message(chat_id, message_id)
                         user_list = data[chat_id]
                         if not user_list:
                             send_silent_menu(chat_id, "📭 Takip ettiğin ürün bulunmuyor.")
@@ -245,10 +229,9 @@ def main():
                                 text = f"*{i+1}. Ürün*\n📌 *{item['title']}*\n💰 *Fiyat:* {item['price']}"
                                 send_product_card(chat_id, text, item.get('image'), item['url'], i)
                     elif user_message == "🧹 Listeyi Temizle" or msg_lower == "/temizle":
-                        delete_message(chat_id, message_id)
                         data[chat_id] = []
                         save_data(data)
-                        send_silent_menu(chat_id, "🗑️ Tüm liste temizlendi.")
+                        send_silent_menu(chat_id, "🗑️️ Tüm liste temizlendi.")
                     elif user_message.startswith("http://") or user_message.startswith("https://"):
                         delete_message(chat_id, message_id)
                         
@@ -260,7 +243,7 @@ def main():
                         else:
                             send_silent_menu(chat_id, f"❌ Eklenemedi: {price}")
                     else:
-                        delete_message(chat_id, message_id)
+                        pass
         time.sleep(1)
 
 if __name__ == '__main__':
